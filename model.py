@@ -20,13 +20,14 @@ class Vgg16(nn.Module):
                 results.append(x)
         return results
 
+
 class Resblock(nn.Module):
     def __init__(self, in_channels):
         super(Resblock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
         self.conv2 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
         self.conv3 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
-        self.relu = nn.Relu()
+        self.relu = nn.ReLU()
 
     def forward(self, x_in):
         x = self.conv1(x_in)
@@ -62,27 +63,28 @@ class Encoding_network(nn.Module):
         x = self.conv1(vgg[4])
         x = self.resblock1(x)
         x = F.interpolate(x, scale_factor=2)
-        x = torch.cat(x, vgg[3])
+        x = torch.cat([x, vgg[3]], dim=1)
 
         x = self.conv2(x)
         x = self.resblock2(x)
         x = F.interpolate(x, scale_factor=2)
-        x = torch.cat(x, vgg[2])
+        x = torch.cat([x, vgg[2]], dim=1)
 
         x = self.conv3(x)
         x = self.resblock3(x)
         x = F.interpolate(x, scale_factor=2)
-        x = torch.cat(x, vgg[1])
+        x = torch.cat([x, vgg[1]], dim=1)
 
         x = self.conv4(x)
         x = self.resblock4(x)
         x = F.interpolate(x, scale_factor=2)
-        x = torch.cat(x, vgg[0])
+        x = torch.cat([x, vgg[0]], dim=1)
 
         x = self.conv5(x)
         x = self.resblock5(x)
         x = self.out_conv(x)
         return x
+
 
 class Decoding_network(nn.Module):
     def __init__(self):
@@ -110,40 +112,42 @@ class Decoding_network(nn.Module):
 
     def forward(self, vgg, enc, cor):
         d_cor = F.interpolate(cor, size=(16, 16))
-        d_texture = F.interpolate(enc, size(16, 16))
+        d_texture = F.interpolate(enc, size=(16, 16))
         d_v = self.conv1_1(vgg[4])
-        x = torch.cat([d_v, d_cor, d_texture])
+        x = torch.cat([d_v, d_cor, d_texture], dim=1)
+        # print(x.shape, d_v.shape, d_cor.shape, d_texture.shape)
         x = self.conv1_2(x)
         x = self.resblock1(x)
 
         d_cor = F.interpolate(cor, size=(32, 32))
         x = F.interpolate(x, size=(32, 32))
         d_v = self.conv2_1(vgg[3])
-        x = torch.cat([d_v, d_cor, x])
+        x = torch.cat([d_v, d_cor, x], dim=1)
         x = self.conv2_2(x)
         x = self.resblock2(x)
 
         d_cor = F.interpolate(cor, size=(64, 64))
         x = F.interpolate(x, size=(64, 64))
         d_v = self.conv3_1(vgg[2])
-        x = torch.cat([d_v, d_cor, x])
+        x = torch.cat([d_v, d_cor, x], dim=1)
         x = self.conv3_2(x)
         x = self.resblock3(x)
 
         d_cor = F.interpolate(cor, size=(128, 128))
         x = F.interpolate(x, size=(128, 128))
         d_v = self.conv4_1(vgg[1])
-        x = torch.cat([d_v, d_cor, x])
+        x = torch.cat([d_v, d_cor, x], dim=1)
         x = self.conv4_2(x)
         x = self.resblock4(x)
 
         x = F.interpolate(x, size=(256, 256))
-        x = torch.cat([vgg[0], cor, x])
+        x = torch.cat([vgg[0], cor, x], dim=1)
         x = self.conv5_2(x)
         x = self.resblock5(x)
 
         x = self.out_conv(x)
         return x
+
 
 class Texture_model(nn.Module):
     def __init__(self):
@@ -151,6 +155,7 @@ class Texture_model(nn.Module):
         self.vgg = Vgg16()
         self.enc = Encoding_network()
         self.dec = Decoding_network()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, x_ref):
         vgg = self.vgg(x)
@@ -161,7 +166,21 @@ class Texture_model(nn.Module):
         x_ref = self.enc(x_ref)
         x_ref = F.normalize(x_ref)
 
-        cor = 1 - F.conv2d(x, x_ref, padding=32)
+        x = torch.unbind(x)
+        x_ref = torch.unbind(x_ref)
+
+        conv_res = []
+        for x_t, x_ref_t in zip(x, x_ref):
+            x_t, x_ref_t = x_t.unsqueeze(0), x_ref_t.unsqueeze(0)
+            res_t = F.conv2d(x_t, x_ref_t, padding=32)
+            conv_res.append(torch.squeeze(res_t, dim=0))
+        cor = torch.stack(conv_res)
+
+        cor = 1 - cor
+        cor = F.interpolate(cor, size=(256, 256))
+        # print(x.shape, x_ref.shape, cor.shape)
 
         out = self.dec(vgg, enc, cor)
+
+        out = self.sigmoid(out)
         return out
