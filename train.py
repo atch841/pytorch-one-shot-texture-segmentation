@@ -43,7 +43,7 @@ def train():
 	val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=True, num_workers=4)
 
 	loss_func = WCE_loss()
-	opt = torch.optim.Adam(model.parameters(), lr=initial_lr)
+	opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-4)
 	for epoch in range(num_epoch):
 		tic = time.time()
 		training_loss = 0
