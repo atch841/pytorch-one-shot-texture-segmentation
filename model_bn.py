@@ -25,16 +25,19 @@ class Resblock(nn.Module):
     def __init__(self, in_channels):
         super(Resblock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
+        self.conv1_bn = nn.BatchNorm2d(in_channels)
         self.conv2 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
+        self.conv2_bn = nn.BatchNorm2d(in_channels)
         self.conv3 = nn.Conv2d(in_channels, in_channels, 3, padding=1)
+        self.conv3_bn = nn.BatchNorm2d(in_channels)
         self.relu = nn.ReLU()
 
     def forward(self, x_in):
-        x = self.conv1(x_in)
+        x = self.conv1_bn(self.conv1(x_in))
         x = self.relu(x)
-        x = self.conv2(x)
+        x = self.conv2_bn(self.conv2(x))
         x = self.relu(x)
-        x = self.conv3(x)
+        x = self.conv3_bn(self.conv3(x))
         x = torch.add(x, x_in)
         return x
 

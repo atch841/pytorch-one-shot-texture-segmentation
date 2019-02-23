@@ -1,4 +1,4 @@
-from model import Texture_model
+from model_bn import Texture_model
 from dataset import Texture_dataset_train, Texture_dataset_val
 import torch
 import torch.nn as nn
@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from sys import stdout
 import time
+import os
 
 
 class WCE_loss(nn.Module):
@@ -28,7 +29,9 @@ def train():
 	num_epoch = 20000
 	cur_lr = initial_lr = 1e-5
 	steps_to_decay_lr = 500
+	steps_to_save = 5
 	num_max_model = 5
+	saved_best_model = []
 	saved_model = []
 	best_loss = np.inf
 	save_model_path = '/fast_data/one_shot_texture_models/'
@@ -38,7 +41,7 @@ def train():
 	model.to(device)
 
 	train_dataset = Texture_dataset_train(200, 'train_texture.npy')
-	val_dataset = Texture_dataset_val(240, 'val_texture.npy')
+	val_dataset = Texture_dataset_train(240, 'val_texture.npy')
 	train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
 	val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=True, num_workers=4)
 
@@ -65,6 +68,7 @@ def train():
 		training_loss /= i
 		# print(training_loss)
 
+		model.eval()
 		with torch.no_grad():
 			for i, batch in enumerate(val_dataloader):
 				x, y, x_ref = batch
@@ -76,15 +80,30 @@ def train():
 			testing_loss /= i
 		toc = time.time()
 		print('\r%5d/%5d training loss: %.5f, validation loss: %.5f (%d sec)' % (epoch + 1, num_epoch, training_loss, testing_loss, toc - tic))
+		model.train()
 
 		if testing_loss < best_loss:
 			best_loss = testing_loss
 			model_name = "model_%.5f.pt" % best_loss
+			saved_best_model.append(model_name)
+			torch.save(model.state_dict(), save_model_path + model_name)
+			if len(saved_best_model) > 5:
+				rm = saved_best_model.pop(0)
+				if os.path.exists(save_model_path + rm):
+					os.remove(save_model_path + rm)
+				else:
+					print('Can not find file', save_model_path + rm)
+
+		if (epoch + 1) % steps_to_save == 0:
+			model_name = 'model_%03d.pt' % (epoch + 1)
 			saved_model.append(model_name)
 			torch.save(model.state_dict(), save_model_path + model_name)
 			if len(saved_model) > 5:
-				saved_model.pop(0)
-
+				rm = saved_model.pop(0)
+				if os.path.exists(save_model_path + rm):
+					os.remove(save_model_path + rm)
+				else:
+					print('Can not find file', save_model_path + rm)
 
 		if (epoch + 1) % steps_to_decay_lr == 0:
 			cur_lr /= 2
